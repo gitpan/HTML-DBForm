@@ -11,7 +11,7 @@ use HTML::Template;
 use HTML::SuperForm;
 use DBI;
 
-our $VERSION = '1.00';
+our $VERSION = '1.02';
 
 
 =head1 NAME
@@ -93,6 +93,8 @@ a primary key.
 
 Optional parameters:
 
+I<stylesheet> the URL to a custom stylesheet file.  
+
 I<template> the path to a custom template file. To get a 
 template file to start with, you can do this:
 
@@ -113,14 +115,14 @@ B<Examples>
 	
 	my $editor = HTML::DBForm->new(
 			table          => 'table_to_update', 
-			primary_key    => 'id', 
+			primary_key    => 'id',
 	);
 	
 	
 	my $editor = HTML::DBForm->new(
 			table          => 'table_to_update', 
 			primary_key    => 'id', 
-			template       => '/templates/template.tmpl',
+			stylesheet     => '/styles/custom.css',
 			verbose_errors => 1,
 			error_handler  => sub { notify_admin(localtime); return @_ },
 	);
@@ -157,6 +159,7 @@ sub new {
 	$self->{elements} 	= [];
 	$self->{verbose}	= $params{'verbose_errors'};
 	$self->{err_handler}= $params{'error_handler'};
+	$self->{css}		= $params{'stylesheet'};
 
 	bless $self, $type;
 }
@@ -392,6 +395,7 @@ sub _display_form {
 	]);
 
 	$self->{template}->param(
+		CUSTOM_CSS => "$self->{css}",
 		FORM_LOOP => \@form_loop, 
 		URL => $self->{query}->url,
 	) unless $self->{error};
@@ -672,7 +676,7 @@ sub _update_row {
 	
 	my $self = shift;
 	my $placeholder_count;
-	my @values; 
+	my @values = (); 
 
 	my $SQL = "UPDATE $self->{table} set ";
 	my $q = $self->{query};
@@ -689,19 +693,19 @@ sub _update_row {
 			$val .= $q->param("$element->{column}_DD");
 			
 			push @values, $val;
-			
 		} else {
 			push @values, $q->param($element->{column});
 		}
 	}
 	chop ($SQL);
     
-	$SQL .= "WHERE $self->{pk}=?";
+	$SQL .= " WHERE $self->{pk}=?";
+	
 	push @values, $q->param($self->{pk});
  
 	my $sth = $self->{dbh}->prepare($SQL);
         
-	eval { $sth->execute(@values); 1 } or $self->_err_msg($@);
+	eval { $sth->execute(@values); 1 } or $self->_err_msg($@, $SQL);
 
 	$self->{template}->param(
 		MESSAGE => 'Record Updated.', 
@@ -742,7 +746,7 @@ sub _delete_row {
 sub _err_msg {
 
 	my $self = shift;
-	my @errs = shift;
+	my @errs = @_;
 	
 	carp(@errs);
 
@@ -789,35 +793,85 @@ sub TEMPLATE {
 qq(<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" >
 <html>
   <head>
-	
+	<!-- TMPL_IF CUSTOM_CSS -->
+		<link rel="stylesheet" href="<!-- TMPL_VAR CUSTOM_CSS -->" type="text/css">
+	<!-- TMPL_ELSE -->
  	<style>
-		.medium_text {
-			font-family:arial, helvetica, sans-serif; 
-			font-weight:normal; 
-			font-size:11px;  
-			color:#333333;
-		}
-	
-		.large_text {
-			font-family:arial, helvetica, sans-serif; 
-			font-weight:bold; 
-			font-size:11px;  
-			color:#333333;
+		
+		body {
+			margin: 15 15 15 15;
 		}
 
-		.error_text {
-			font-family:arial, helvetica, sans-serif; 
-			font-weight:bold; 
-			font-size:11px;  
-			color:#660000;
+		.admin_area {
+			padding-top: 25px;
+			padding-bottom: 25px;
+			padding-left: 20px;
+			margin-bottom: 30;
+			float: left;
+			width: 540px;
+			border: solid 1px #ccc;
+			background-color: #fff;
 		}
 		
-		td { 
-			font-family:arial, helvetica, sans-serif; 
-		  	font-size: 11px;
-          	border: solid 1px #eee;
-			}
+		.message_area {
+			margin-top: 45px;
+			margin-bottom: auto;
+			margin-left: auto;
+			margin-right: auto;
+			font-family: Verdana, sans-serif, Arial;
+			font-weight: normal;
+			font-size: 12px;
+			width: 340px;
+			padding-left: 10px;
+			padding-right: 10px;
+			padding-top: 10px;
+			padding-bottom: 10px;
+			border-top: solid 2px #dedede;
+			border-left: solid 2px #dedede;
+			border-right: solid 2px #666;
+			border-bottom: solid 2px #666;
+			background-color: #ccc;
+		}
+			
+		.error_area {
+			margin-top: 45px;
+			margin-bottom: auto;
+			margin-left: auto;
+			margin-right: auto;
+			font-family: Verdana, sans-serif, Arial;
+			font-weight: normal;
+			font-size: 12px;
+			width: 340px;
+			color: #600;
+			padding-left: 10px;
+			padding-right: 10px;
+			padding-top: 10px;
+			padding-bottom: 10px;
+			border-top: solid 2px #dedede;
+			border-left: solid 2px #dedede;
+			border-right: solid 2px #666;
+			border-bottom: solid 2px #666;
+			background-color: #ccc;
+		}
+		
+		.error_message {
+			padding-top: 10px;
+			padding-bottom: 10px;
+		}	
+	
+		table { 
+			font-family: Verdana, sans-serif, Arial;
+			font-weight: normal;
+			font-size: 12px;
+			font-color: #ccc;
+			background-color: white;
+		}
 
+		td {
+			padding-top: 4px;
+			padding-bottom: 4px;
+		}
+					
 		INPUT, TEXTAREA, SELECT, OPTION, SUBMIT {
           font-family: Arial, Helvetica, Sans-Serif;
 		  font-size: 11px;
@@ -827,20 +881,11 @@ qq(<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" >
           border: solid 1px #666;
           } 
 	</style>
-  
+ 	<!-- /TMPL_IF --> 
 
     <title><TMPL_VAR NAME=VALUE></title>
-  </head>
-
-<body style="margin: 0 0 0 0;" marginwidth="0" marginheight="0" width="100%" bgcolor="#ffffff">
-
-<table cellpadding="0" cellspacing="20" border="0">
-  
-  <tr>
-    <td>
-
 	<script> 
-	function delete_record(){
+		function delete_record(){
 		var confirmed = window.confirm("Are you sure? Deletions are permanent.");
 		if(confirmed){
 			document.location="<!-- TMPL_VAR URL -->?rm=delete&<!-- TMPL_VAR PK -->=<!-- TMPL_VAR ID -->";
@@ -850,10 +895,13 @@ qq(<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" >
 	}
 	</script>
  	
+  </head>
+
+<body>
+
+
 	<form name="form1" enctype="multipart/form-data" method="post">
 
-	<!--             -->
-	<!--  FORM AREA  -->
 	<!--             -->
 
 	<!-- TMPL_LOOP HIDDEN_LOOP -->
@@ -862,15 +910,15 @@ qq(<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" >
 
 	<!-- TMPL_IF FORM_LOOP -->
     
-	
-    	<table border='0' cellpadding='10'>
+	<div class="admin_area">	
+    	<table>
 
 		<!-- TMPL_LOOP NAME=FORM_LOOP -->
-		<tr valign='top'>
-			<td class='medium_text' vailign='top'>
-				<b><!-- TMPL_VAR LABEL --></b>
+		<tr>
+			<td>
+				<!-- TMPL_VAR LABEL -->
 			</td>
-			<td class='medium_text' valign='top'>
+			<td>
 				<!-- TMPL_VAR ELEMENT -->
 			</td>
 		</tr>
@@ -892,6 +940,7 @@ qq(<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" >
 		</tr>
 
 		</table>
+	</div>
 	<!-- /TMPL_IF -->
 	</form>
 
@@ -902,15 +951,13 @@ qq(<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" >
 	<!--             -->
 
 	<!-- TMPL_IF ERROR_MSG -->
-	<table cellpadding='10' width="400">
-	<tr>
-		<td class='error_text'>
-			I'm sorry, but there was an error processing your request.<p>
-			<b><!-- TMPL_VAR ERROR_MSG --></b><p>
-			Please contact the administrator for more information.
-		</td>
-	</tr>
-	<table>		
+	<div class='error_area'>
+	I'm sorry, but there was an error processing your request.<br />
+	<div class='error_message'>
+	<!-- TMPL_VAR ERROR_MSG -->
+	</div>
+	Contact the administrator for more information.
+	</div>		
 	<!-- /TMPL_IF -->
 
 
@@ -919,24 +966,18 @@ qq(<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" >
 	<!--             -->
 
 	<!--  TMPL_IF MESSAGE   -->
-	<table cellpadding='10'>
-	<tr>
-		<td class='medium_text'>
-
-			<b><!-- TMPL_VAR MESSAGE --></b>
-			<p>
-			Your request was processed successfully.<p>
-			<a href='<!-- TMPL_VAR URL -->' class='glink'>Click Here</a>
-			to continue.
-		</td>
-	</tr>
-	<table>		
+	<div class='message_area'>
+	<div class='message'>
+	<!-- TMPL_VAR MESSAGE -->
+	</div>
+	
+	Your request was processed successfully.<p>
+	<a href='<!-- TMPL_VAR URL -->' class='glink'>Click Here</a>
+	to continue.
+	</div>		
 	<!-- /TMPL_IF -->
 
 
-   </td>
-  </tr>
-</table>
 </body>
 </html>);
 }

@@ -4,7 +4,7 @@
 #########################
 
 
-use Test::More tests => 5;
+use Test::More tests => 6;
 
 BEGIN{
 	use_ok('HTML::DBForm');
@@ -31,5 +31,13 @@ $search = HTML::DBForm::Search->new('dropdown',
 
 ok ( defined ($search) && ref $search eq 'HTML::DBForm::Search::DropDown', 
 	'dropdown search works');
+
+
+$search = HTML::DBForm::Search->new('tablelist',
+	{ columns  => ['test', 'test'] },
+	 );
+
+ok ( defined ($search) && ref $search eq 'HTML::DBForm::Search::TableList', 
+	'tablelist search works');
 
 

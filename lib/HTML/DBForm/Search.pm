@@ -8,5 +8,6 @@ our $VERSION = '1.00';
 sub run	{ die "define run() in implementation" };
 
 __PACKAGE__->add_factory_type( dropdown	=> 'HTML::DBForm::Search::DropDown');
+__PACKAGE__->add_factory_type( tablelist => 'HTML::DBForm::Search::TableList');
 
 1;

@@ -1,26 +1,27 @@
-package HTML::DBForm::Search::DropDown;
+package HTML::DBForm::Search::TableList;
 
 use 5.008;
 use strict;
 use warnings;
 no warnings 'uninitialized';
 
-our $VERSION = '1.02';
+
+our $VERSION = '1.00';
 
 =head1 NAME
 
-HTML::DBForm::Search::DropDown - Creates a web interface for searching database tables
+HTML::DBForm::Search::TableList - Creates a web interface for searching database tables
 
 =head1 SYNOPSIS
 
-    $search = HTML::DBForm::Search->new('dropdown', { column => 'name' });
+    $search = HTML::DBForm::Search->new('tablelist', { column => 'name' });
 	
     $editor->run(search => $search);
 
 
 =head1 INTRODUCTION
 
-  HTML::DBForm::Search::DropDown provides a web interface to search for rows
+  HTML::DBForm::Search::TableList provides a web interface to search for rows
   in a database to be updated by HTML::DBForm. 
 
 =cut
@@ -37,7 +38,7 @@ HTML::DBForm::Search::DropDown - Creates a web interface for searching database 
 Constructor inherited from HTML::DBForm::Search
 
 takes a scalar indicating the type of search module
-to create (in this case 'dropdown'), and a list of
+to create (in this case 'tablelist'), and a list of
 hash refs designating which columns to display as HTML 
 select form elements, and in which order.
 
@@ -55,7 +56,7 @@ the second will be used as option labels.
 
 B<Example>
 
-    $search = HTML::DBForm::Search->new('dropdown',
+    $search = HTML::DBForm::Search->new('tablelist',
         { column => 'category' },
         { columns => ['id', ' CONCAT(fname, ' ', lname) '] }
     );
@@ -85,14 +86,16 @@ This would create a simple one step search.
 # constructor inherited from Class::Factory 
 # via HTML::DBForm::Search
 
+
 sub init {
 
 	my $self = shift;
 	$self->{params} = \@_;
-	
+
+	$self->{html_cols} = [];
+
 	return $self;
 }
-
 
 
 
@@ -121,7 +124,7 @@ sub run {
 	return ($self->{editor}->{error}) ? 
 		$self->{editor}->{template}->output :
 		$self->{template}->output ;
-	
+
 }
 
 
@@ -142,6 +145,50 @@ sub set_stylesheet {
 
 	my $self = shift;
 	$self->{css} = shift ; 
+}
+
+
+
+=item add_column  
+
+Adds a new column to your search list table.
+Only affects the last search screen.
+
+Required parameters: 
+
+I<column> the column that this form element represents
+
+Optional parameters:
+
+I<label> a label that will appear as the column header.
+this will default to the name of the column.
+
+I<callback> a subroutine reference that will be passed each
+value for processing before display. 
+
+B<Examples>
+	
+    $editor->add_column( column => 'date' );
+	
+    $editor->add_column( 
+        column  => 'fname', 
+        label   => 'First Name', 
+        callback => sub { ucfirst(shift) }
+	);
+
+=cut
+
+sub add_column {
+	
+	my $self = shift;
+
+	$self->_err_msg("add_column() got an odd number of parameters!")
+    unless ((@_ % 2) == 0);
+
+	my %params = @_;
+	
+	push (@{$self->{td_cols}}, \%params);
+
 }
 
 
@@ -201,12 +248,11 @@ sub get_select {
 	my $self = shift;
 	my ($col1, $col2) = @_;
 
-
 	my $sql = qq(	SELECT	DISTINCT $col1, $col2 
  					FROM	$self->{editor}->{table}  
 					);	
 
-	return $sql.' ORDER BY '.$col2 unless $self->{step};
+	return $sql unless $self->{step};
 
 	my (@values, $i);
 	
@@ -220,8 +266,7 @@ sub get_select {
 			$self->{editor}->{query}->param(($self->parse_params($step))[0]);
 	}
 
-	$sql .= ' ORDER BY '. $col2;
-
+	$sql .= " ORDER BY $col2";
 
 	# the sql is the first element
 	# the rest of the array is 
@@ -240,11 +285,21 @@ sub populate_search {
 
 	my $self = shift;
 	my ($sql, @params) = @_;
-	my (@tmpl_loop, $db_return);
+	my (@tmpl_loop, @headers, $db_return);
 	
-	eval{
-		$db_return = $self->{editor}->{dbh}->selectall_arrayref($sql, undef, @params);
-	1 } or $self->{editor}->_err_msg($@, $sql);
+	eval {
+		$db_return = $self->{editor}->{dbh}->selectall_arrayref($sql,undef,@params);
+		1 } or $self->{editor}->_err_msg($@, $sql);
+
+	# is this the last step?
+	my $last_step = (($self->{step}+1) >= scalar(@{$self->{params}})) ? 1 : 0;
+
+	my $rm = 'display' if $last_step;
+
+	# is it the first?
+	my $cancel = ($self->{step} > 0) ? 1 : 0;
+
+
 
 	# workaround for servers that lack
 	# subqueries ( e.g mysql < 4.1 )
@@ -258,10 +313,59 @@ sub populate_search {
 		my %row = (
 			VALUE => $row_ref->[0],		
 			LABEL => $row_ref->[1],
-		);		
+			RADIO_NAME => ($self->parse_params($self->{step}))[0],
+		);
+
+		# if final screen, list any 
+		# additional columns specified
+		
+		if ($last_step){
+			my @td_loop;
+			
+			for my $col_hash(@{$self->{td_cols}}){
+				my $sql = qq( 	SELECT	$col_hash->{column} 
+								FROM	$self->{editor}->{table}
+								WHERE	$self->{editor}->{pk} = ?
+							);
+
+				my $ar;
+				eval{
+					$ar = $self->{editor}->{dbh}->selectrow_arrayref(
+						$sql, undef, $row_ref->[0]
+						); 1
+					} or $self->{editor}->_err_msg($@, $sql);
+		
+				$ar->[0] = $col_hash->{callback}->($ar->[0]) 
+					if $col_hash->{callback};
+		
+				my %td = (
+					VALUE => $ar->[0]	
+				);
+				push(@td_loop, \%td);
+			}
+			$row{TDS} = \@td_loop;
+		}	
+		
 		push(@tmpl_loop, \%row);
 	}
 
+	# if final screen, list any 
+	# additional headers specified
+		
+	if ($last_step){
+		for my $col_hash(@{$self->{td_cols}}){
+
+			my $label = $col_hash->{label};
+	
+			$label ||= join(' ', map {ucfirst($_)} 
+				split(/_/, $col_hash->{column}));
+		
+			my %row = (
+				HEADER => $label 
+			);
+		push(@headers, \%row);
+		}
+	}
 
 	# keep track of old choices
 	my @prev_vals; 
@@ -273,20 +377,14 @@ sub populate_search {
 	}
 
 
-	# is this the last step?
-	my $rm = (($self->{step} +1 ) >= scalar(@{$self->{params}})) ? 'display' :'';
-
-
-	# is it the first?
-	my $cancel = ($self->{step} > 0) ? 1 : 0;
 
 
 	$self->{template}->param(	SEARCH_LOOP	=> \@tmpl_loop, 
 								FORM 		=> 1,
-								SELECT_NAME	=> ($self->parse_params($self->{step}))[0],
 								RUN_MODE	=> $rm,
 								CANCEL		=> $cancel,
 								PREV_VALS	=> \@prev_vals,
+								HEADERS		=> \@headers,
 								CUSTOM_CSS	=> $self->{css},
 							); 	
 }
@@ -303,13 +401,12 @@ sub constrain_results {
 
 	my ($self, $list) = @_;
 
-	# get a list of all results 
-	# based on previous selections	
-	my $editor = $self->{editor};
+	# get a list of all possible
+	# results based on previous selections	
 
 	my $sql = qq(	SELECT	DISTINCT 
-	   				$self->{params}->[$self->{step}]->{sql}->[0] 
- 					FROM	$editor->{table}  
+							T.$self->{params}->[$self->{step}]->{sql}->[0] 
+ 					FROM	$self->{editor}->{table} T 
 					);	
 
 	my (@values, $i, @results);
@@ -321,16 +418,10 @@ sub constrain_results {
 		$sql .= ' AND ' unless $step >= $self->{step}-2;		
 
 		push @values, 
-			$editor->{query}->param(($self->parse_params($step))[0]);
+			$self->{editor}->{query}->param(($self->parse_params($step))[0]);
 	}
 
-	my $selections;
-	
-	
-	eval{
-		$selections = 
-		$editor->{dbh}->selectcol_arrayref($sql, undef, @values); 1
-		} or $editor->_err_msg($@, $sql);
+	my $selections = $self->{editor}->{dbh}->selectcol_arrayref($sql, undef, @values);
 
 	for my $lr(@$list){
 		push (@results, $lr) if grep{/^$lr->[0]$/} @$selections;
@@ -341,41 +432,81 @@ sub constrain_results {
 
 
 
+# create an HTML::Template
 
 sub TEMPLATE {
-
 qq(<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" >
 <html>
-<head>
-<!-- TMPL_IF CUSTOM_CSS -->
-	<link rel="stylesheet" href="<!-- TMPL_VAR CUSTOM_CSS -->" type="text/css">
-<!-- TMPL_ELSE -->
-<style>
+  <head>
+	<!-- TMPL_IF CUSTOM_CSS -->
+		<link rel="stylesheet" href="<!-- TMPL_VAR CUSTOM_CSS -->" type="text/css">
+	<!-- TMPL_ELSE -->
+ 	<style>
 		body {
-			margin:15 15 15 15;
+			margin:0 0 0 0;
+			border:1px solid #fff;
 		}
 
 		.admin_area {
-			padding-top: 25px;
+			padding-top: 15px;
 			padding-bottom: 25px;
-			padding-left:20px;
+			padding-left:15px;
 			float: left;
-			width:300px;
+			width:585px;
+			min-width: 585px;
 			background-color: #ffffff;
 		}
-
-		.button_area {
-			background-color: #ffffff;
+		
+		table { 
+			font-family: Verdana, sans-serif, Arial;
+			font-weight: normal;
+			font-size: 12px;
+			color: #333333;
+			background-color: white;
+			text-align: left;
+			width: 580px;
+			border:1px solid #cccccc;
 		}
 
-		.select_area {
-			background-color: #ffffff;
+		tr.odd {
+			background-color: #EEF4FE;
 		}
 
-		.label {
+		td {
+			padding-left: 23px; 
+			padding-bottom: 4px; 
+			padding-top: 4px; 
+			padding-right: 23px; 
+		} 
+
+		td.odd {
+			padding-left: 23px; 
+			padding-bottom: 4px; 
+			padding-top: 4px; 
+			padding-right: 23px; 
+		} 
+
+		td.header {
 			font-family: Verdana, sans-serif, Arial;
 			font-weight: bold;
-			font-size: 11px;
+			font-color: #383272;
+			padding-left: 23px; 
+			padding-bottom: 4px; 
+			padding-top: 4px; 
+			padding-right: 23px; 
+		}
+
+		a:visited {
+			color:#698A60;
+		}
+		a:active {
+			color:#273B80;
+		}
+		a:hover {
+			color:#A49580;
+		}
+		a:link {
+			color:#383272;
 		}
 
 		INPUT, TEXTAREA, SELECT, OPTION, SUBMIT {
@@ -386,59 +517,82 @@ qq(<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" >
           /*background-color: #fff;*/
           border: solid 1px #666;
           } 
-		  
-</style>
-<!-- /TMPL_IF -->
-</head>
+	</style>
+  	<!-- /TMPL_IF -->
 
+    <title></title>
+  </head>
 <body>
+<form name="form1" method="post">
 
-<form name="form1" enctype="multipart/form-data" method="post">
+	<div class="admin_area">
+	<table id="searchlist">
+	<tbody>
+		<tr>
+			<td class="header">
+				Select	
+			</td>
 
-<div class="admin_area">
+			<!-- HEADER ROW -->
+				
+			<!-- TMPL_LOOP HEADERS -->
+			<td class="header">
+				<!-- TMPL_VAR HEADER -->	
+			</td>
+			<!-- /TMPL_LOOP -->
+			
+		</tr>
+			
+		<!-- TMPL_LOOP SEARCH_LOOP -->
 
-<p class="label">
-Edit or Create a Record: 
-</p>
+		<tr <!-- TMPL_IF __ODD__ -->class="odd"<!-- /TMPL_IF -->>
+			<td <!-- TMPL_IF __ODD__ -->class="odd"<!-- /TMPL_IF -->>
+			<input type='radio' name='<!-- TMPL_VAR RADIO_NAME -->' 
+				value='<!--TMPL_VAR VALUE -->' <TMPL_IF __FIRST__>checked</TMPL_IF>>
+				<!-- TMPL_VAR LABEL -->
+			</td>
+			<!-- TMPL_LOOP TDS -->
+			<td <!-- TMPL_IF __ODD__ -->class="odd"<!-- /TMPL_IF -->>
+				<!-- TMPL_VAR VALUE -->	
+			</td>
+			<!-- /TMPL_LOOP -->
+		</tr>
 
-<p class="select_area">
-<select name='<!-- TMPL_VAR SELECT_NAME -->' >
-<!-- TMPL_LOOP SEARCH_LOOP -->
-	<option value='<!--TMPL_VAR VALUE -->'> <!-- TMPL_VAR LABEL --> </option>
-<!-- /TMPL_LOOP -->
-</select>
-</p>
+		<!-- /TMPL_LOOP -->
+		</tbody>
+		</table>
 
-<!-- HIDDEN HTML FORM ELEMENTS -->
+		<!-- HIDDEN HTML FORM ELEMENTS -->
 
-<input type="hidden" name="step" value="<!-- TMPL_VAR STEP -->">	
-<input type="hidden" name="rm" value="<!-- TMPL_VAR RUN_MODE -->">	
+		<input type="hidden" name="step" value="<!-- TMPL_VAR STEP -->">	
+		<input type="hidden" name="rm" value="<!-- TMPL_VAR RUN_MODE -->">	
 	
-<!-- TMPL_LOOP PREV_VALS -->
-<input type="hidden" name="<!-- TMPL_VAR LABEL -->" value="<!-- TMPL_VAR VALUE -->">
-<!-- /TMPL_LOOP -->
+		<!-- TMPL_LOOP PREV_VALS -->
+		<input type="hidden" name="<!-- TMPL_VAR LABEL -->" value="<!-- TMPL_VAR VALUE -->">
+		<!-- /TMPL_LOOP -->
 
-<!-- END HIDDEN HTML ELEMENTS -->
+		<!-- END HIDDEN HTML ELEMENTS -->
 
-<p class="button_area">
-<input type="submit" value="Submit" style="width:80;">
+
+		<input type="submit" value="Submit" style="width:80;">
 		
-<!-- TMPL_IF CANCEL -->
-<input type='button' value='Cancel ' 
-onclick='document.location="javascript:history.go(-1)"'
-style="width:80;">
-<!-- /TMPL_IF -->	
+		<!-- TMPL_IF CANCEL -->
+		
+		<input type='button' value='Cancel ' onclick='document.location="javascript:history.go(-1)"'
+		style="width:80;">
+			
+		<!-- /TMPL_IF -->	
 	
-<input type='button' value='Add New' 
-onclick='document.location="<!-- TMPL_VAR URL -->?rm=display"'
-style="width:80;">
-</p>
-</div>
+		<input type='button' value='Add New' 
+		onclick='document.location="<!-- TMPL_VAR URL -->?rm=display"'
+		style="width:80;">
+		</div>
 
 </form>
 </body>
 </html>);
-}
+};
+
 
 
 1;
