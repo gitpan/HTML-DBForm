@@ -6,7 +6,7 @@ use warnings;
 no warnings 'uninitialized';
 
 
-our $VERSION = '1.00';
+our $VERSION = '1.01';
 
 =head1 NAME
 
@@ -33,7 +33,7 @@ HTML::DBForm::Search::TableList - Creates a web interface for searching database
 =cut
 
 
-=item new 
+=head2 new 
 
 Constructor inherited from HTML::DBForm::Search
 
@@ -49,7 +49,7 @@ first of which will be the column to search, and the second of
 which will be the values to display as option labels. 'sql' 
 can be used to populate the select options with an arbitrary SQL 
 statement. If one column is returned from the SQL statement, then 
-it will be used as choice values and lables. If two columns are 
+it will be used as choice values and labels. If two columns are 
 returned, then the first will be the specified column value, while 
 the second will be used as option labels.
 
@@ -72,8 +72,8 @@ should result in the primay key being chosen.
  
 B<Example>
 
-    $search = HTML::DBForm::Search->new('dropdown',
-        { sql => 'SELECT id, label FROM table ORDER BY label' }
+    $search = HTML::DBForm::Search->new('tablelist',
+        { sql => ['id','SELECT id, label FROM table ORDER BY label'] }
     );
 
 This would create a simple one step search. 
@@ -128,7 +128,7 @@ sub run {
 }
 
 
-=item set_stylesheet
+=head2 set_stylesheet
 
 Sets an optional css file
 
@@ -149,7 +149,7 @@ sub set_stylesheet {
 
 
 
-=item add_column  
+=head2 add_column  
 
 Adds a new column to your search list table.
 Only affects the last search screen.

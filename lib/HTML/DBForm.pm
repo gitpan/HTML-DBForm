@@ -11,7 +11,7 @@ use HTML::Template;
 use HTML::SuperForm;
 use DBI;
 
-our $VERSION = '1.02';
+our $VERSION = '1.03';
 
 
 =head1 NAME
@@ -79,7 +79,7 @@ HTML::DBForm - Creates a web interface for updating database tables
 
 =cut
 
-=item new  
+=head2 new  
 
 Creates a new editor object. 
 
@@ -167,7 +167,7 @@ sub new {
 
 
 
-=item element  
+=head2 element  
 
 Adds a new element to your editor object. Elements are created 
 as HTML::SuperForm objects
@@ -241,7 +241,7 @@ sub element {
 
 
 
-=item connect
+=head2 connect
 
 connects to the database. 
 
@@ -290,7 +290,7 @@ sub connect {
 
 
 
-=item run
+=head2 run
 
 runs the object 
 

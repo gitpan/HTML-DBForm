@@ -3,7 +3,7 @@ package HTML::DBForm::Search;
 use strict;
 use base qw(Class::Factory);
 
-our $VERSION = '1.00';
+our $VERSION = '1.01';
 
 sub run	{ die "define run() in implementation" };
 

@@ -32,7 +32,7 @@ HTML::DBForm::Search::DropDown - Creates a web interface for searching database 
 =cut
 
 
-=item new 
+=head2 new 
 
 Constructor inherited from HTML::DBForm::Search
 
@@ -72,7 +72,7 @@ should result in the primay key being chosen.
 B<Example>
 
     $search = HTML::DBForm::Search->new('dropdown',
-        { sql => 'SELECT id, label FROM table ORDER BY label' }
+        { sql => ['id','SELECT id, label FROM table ORDER BY label'] }
     );
 
 This would create a simple one step search. 
@@ -125,7 +125,7 @@ sub run {
 }
 
 
-=item set_stylesheet
+=head2 set_stylesheet
 
 Sets an optional css file
 
