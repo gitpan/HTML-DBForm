@@ -1,6 +1,5 @@
 package HTML::DBForm;
 
-use 5.008;
 use strict;
 use warnings;
 no warnings 'uninitialized';
@@ -11,7 +10,7 @@ use HTML::Template;
 use HTML::SuperForm;
 use DBI;
 
-our $VERSION = '1.04';
+our $VERSION = '1.05';
 
 
 =head1 NAME
@@ -21,6 +20,7 @@ HTML::DBForm - Creates a web interface for updating database tables
 =head1 SYNOPSIS
 
     use HTML::DBForm;
+    use HTML::DBForm::Search;
 
     my $editor = HTML::DBForm->new(
         table       => 'contacts',
@@ -36,14 +36,14 @@ HTML::DBForm - Creates a web interface for updating database tables
 
     $editor->element(
         column  => 'interest',
-        element => 'select',
-        options => \@list_of_interests		
+        type    => 'select',
+        options => \@list_of_interests
     );
  
     $editor->element(
-        column  => 'Reason for Contact',
-        element => 'reason',
-        options => 'select reason from reasons'		
+        label   => 'Reason for Contact',
+        column  => 'reason',
+        options => 'select reason from reasons'
     );
 
     $editor->connect(
@@ -53,11 +53,9 @@ HTML::DBForm - Creates a web interface for updating database tables
     );
 
     $search = HTML::DBForm::Search->new('dropdown',
-    [{
-        column => 'id',
-        sql    => 'select id, name from contacts',
-    }]);
-	
+        { columns => ['id', 'lname'] }
+    );
+   
     $editor->run(search => $search);
 
 
@@ -111,57 +109,57 @@ message to the user.
 
 
 B<Examples>
-	
-	
-	my $editor = HTML::DBForm->new(
-			table          => 'table_to_update', 
-			primary_key    => 'id',
-	);
-	
-	
-	my $editor = HTML::DBForm->new(
-			table          => 'table_to_update', 
-			primary_key    => 'id', 
-			stylesheet     => '/styles/custom.css',
-			verbose_errors => 1,
-			error_handler  => sub { notify_admin(localtime); return @_ },
-	);
+    
+    
+    my $editor = HTML::DBForm->new(
+            table          => 'table_to_update', 
+            primary_key    => 'id',
+    );
+    
+    
+    my $editor = HTML::DBForm->new(
+            table          => 'table_to_update', 
+            primary_key    => 'id', 
+            stylesheet     => '/styles/custom.css',
+            verbose_errors => 1,
+            error_handler  => sub { notify_admin(localtime); return @_ },
+    );
 
-	
+    
 =cut
 
 sub new { 
 
-	my $type = shift;
-	my $self = {};
+    my $type = shift;
+    my $self = {};
  
-	$self->_err_msg("new() got an odd number of parameters!")
+    $self->_err_msg("new() got an odd number of parameters!")
     unless ((@_ % 2) == 0);
 
-	my %params = @_;
+    my %params = @_;
 
-	my $tmpl_ref = $params{'template'} 
-		? do { open(FH, "< $params{'template'}"); local $/; <FH> } 
-		: &TEMPLATE;
+    my $tmpl_ref = $params{'template'} 
+        ? do { open(FH, "< $params{'template'}"); local $/; <FH> } 
+        : &TEMPLATE;
 
 
-	$self->{template} = HTML::Template->new(
-		scalarref => \$tmpl_ref, 
-		die_on_bad_params => 0,
-		loop_context_vars => 1,
-	);
+    $self->{template} = HTML::Template->new(
+        scalarref => \$tmpl_ref, 
+        die_on_bad_params => 0,
+        loop_context_vars => 1,
+    );
 
-	$self->{params}		= ['type','label','value','column'];
-	$self->{table}		= $params{'table'};
-	$self->{pk}			= $params{'primary_key'};
-	$self->{query}		= CGI->new;
-	$self->{form} 		= HTML::SuperForm->new;
-	$self->{elements} 	= [];
-	$self->{verbose}	= $params{'verbose_errors'};
-	$self->{err_handler}= $params{'error_handler'};
-	$self->{css}		= $params{'stylesheet'};
+    $self->{params}        = ['type','label','value','column'];
+    $self->{table}        = $params{'table'};
+    $self->{pk}            = $params{'primary_key'};
+    $self->{query}        = CGI->new;
+    $self->{form}         = HTML::SuperForm->new;
+    $self->{elements}     = [];
+    $self->{verbose}    = $params{'verbose_errors'};
+    $self->{err_handler}= $params{'error_handler'};
+    $self->{css}        = $params{'stylesheet'};
 
-	bless $self, $type;
+    bless $self, $type;
 }
 
 
@@ -204,38 +202,50 @@ hash: a reference to a hash who's keys will be the HTML element's values,
 and values will be the HTML element's labels.
 
 Any other parameter pairs will be passed unchanged to the HTML::SuperForm
-object that creates the actual form element HTML.
+object that creates the actual form element HTML. Please see the 
+HTML::SuperForm Documentation for details. Some common examples are:
+
+disabled => 1, this creates a read-only field.
+
+onclick => "alert('some javascript behavior goes here!'" 
+
+size => 50
+
+maxlength => 50
+
+
+
 
 B<Example>
-	
+    
     $editor->element( column => 'Name' );
-	
+    
     $editor->element( 
-	    column  => 'sex', 
-	    type    => 'radio', 
-		options => {M => 'Male', F => 'Female'}
-	);
-		
+        column  => 'sex', 
+        type    => 'radio', 
+        options => {M => 'Male', F => 'Female'}
+    );
+        
     $editor->element( 
-	    column  => 'color_id',
-		label   => 'Product Color'
-	    type    => 'select', 
-		options => 'SELECT id, color FROM colors ORDER BY color'
-	);
-	
+        column  => 'color_id',
+        label   => 'Product Color'
+        type    => 'select', 
+        options => 'SELECT id, color FROM colors ORDER BY color'
+    );
+    
 =cut
 
 sub element {
 
-	my $self = shift;
+    my $self = shift;
 
-	$self->_err_msg("element() got an odd number of parameters!")
+    $self->_err_msg("element() got an odd number of parameters!")
     unless ((@_ % 2) == 0);
 
-	my %params = @_;
-	
-	push (@{$self->{'elements'}}, \%params);
-		
+    my %params = @_;
+    
+    push (@{$self->{'elements'}}, \%params);
+        
 }
 
 
@@ -255,36 +265,36 @@ I<datasource>, I<username>, and I<password>
 
 
 B<Example>
-	
+    
      $editor->connect( dbh => $dbh );
-	 
+     
      $editor->connect(
          datasource => 'dbi:mysql:my_database',
          username   => 'krailey'
          password   => 'secret'
      );
-	
+    
 =cut
 
 sub connect {
 
-	my $self = shift;
+    my $self = shift;
 
-	$self->_err_msg("connect() got an odd number of parameters!")
+    $self->_err_msg("connect() got an odd number of parameters!")
     unless ((@_ % 2) == 0);
 
-	my %params = @_;
+    my %params = @_;
 
-	if ($params{dbh}){
-		$self->{dbh} = $params{dbh};
-	} else {
-		$self->{dbh} = DBI->connect("$params{datasource}",
-									"$params{username}",
-									"$params{password}",
-									{RaiseError => 1},
-									) 
-									or $self->_err_msg($DBI::errstr); 
-	}
+    if ($params{dbh}){
+        $self->{dbh} = $params{dbh};
+    } else {
+        $self->{dbh} = DBI->connect("$params{datasource}",
+                                    "$params{username}",
+                                    "$params{password}",
+                                    {RaiseError => 1},
+                                    ) 
+                                    or $self->_err_msg($DBI::errstr); 
+    }
 }
 
 
@@ -306,37 +316,37 @@ row that can be updated through the form
 
 
 B<Example>
-	
+    
      $search = HTML::DBForm::Search->new('dropdown',
          { columns  => ['id', 'name']},
      );
      $editor->run(search => $search);
 
      $editor->run(primary_key => '1234');
-	
+    
 =cut
 
 sub run {
 
-	my ($self, %params) = @_;
+    my ($self, %params) = @_;
 
-	$self->{search} = $params{search};
-	
-	my $default = ($params{primary_key}) ? 'display':'search';
-	
-	# dispatch table
-	my %mode = (
-		search	=> sub {$self->{search}->run($self)},
-		display => sub {$self->_display_form($params{primary_key})},
-		insert	=> sub {$self->_insert_row},
-		update	=> sub {$self->_update_row},
-		delete	=> sub {$self->_delete_row},
-	);
-	
-	my $rm = $mode{$self->{query}->param('rm') || $default};
+    $self->{search} = $params{search};
+    
+    my $default = ($params{primary_key}) ? 'display':'search';
+    
+    # dispatch table
+    my %mode = (
+        search    => sub {$self->{search}->run($self)},
+        display => sub {$self->_display_form($params{primary_key})},
+        insert    => sub {$self->_insert_row},
+        update    => sub {$self->_update_row},
+        delete    => sub {$self->_delete_row},
+    );
+    
+    my $rm = $mode{$self->{query}->param('rm') || $default};
 
-	print $self->{query}->header;
-	print $rm->();
+    print $self->{query}->header;
+    print $rm->();
 }
 
 
@@ -349,58 +359,58 @@ sub run {
 
 sub _display_form {
   
-	my $self = shift;
+    my $self = shift;
 
-	my $pk_val = shift || $self->{query}->param($self->{pk});
+    my $pk_val = shift || $self->{query}->param($self->{pk});
 
-	my (@form_loop, $db_row);
+    my (@form_loop, $db_row);
 
-	if ($pk_val){
-		my $SQL = "SELECT * FROM $self->{table} WHERE $self->{pk} = ?";
-		$db_row = $self->{dbh}->selectrow_hashref($SQL, undef, $pk_val);
+    if ($pk_val){
+        my $SQL = "SELECT * FROM $self->{table} WHERE $self->{pk} = ?";
+        $db_row = $self->{dbh}->selectrow_hashref($SQL, undef, $pk_val);
 
-		$self->{template}->param(
-			DELETE 	=> 1,
-			PK 		=> $self->{pk},
-			ID		=> $pk_val,
-			);
-	}
+        $self->{template}->param(
+            DELETE     => 1,
+            PK         => $self->{pk},
+            ID        => $pk_val,
+            );
+    }
 
-	for my $element(@{$self->{elements}}){
+    for my $element(@{$self->{elements}}){
 
-		my %row;
+        my %row;
 
-		# set the defaults 
-		$element->{type} ||= 'text';
-		
-		$element->{label} ||= join(' ', 
-			map {ucfirst($_)} split(/_/,$element->{column}));
-		
-		$element->{value} = $db_row->{$element->{column}};
+        # set the defaults 
+        $element->{type} ||= 'text';
+        
+        $element->{label} ||= join(' ', 
+            map {ucfirst($_)} split(/_/,$element->{column}));
+        
+        $element->{value} = $db_row->{$element->{column}};
 
-		$row{LABEL} = $element->{label};	
-		$row{ELEMENT} = $self->_build_element($element);	
+        $row{LABEL} = $element->{label};    
+        $row{ELEMENT} = $self->_build_element($element);    
 
-		push(@form_loop, \%row);
-	}
+        push(@form_loop, \%row);
+    }
 
-	my $next_mode = ($pk_val) ? 'update' : 'insert';
-	
-	my $rm = { name => 'rm', default => $next_mode };
-	my $id = { name => $self->{pk}, default => $pk_val };
+    my $next_mode = ($pk_val) ? 'update' : 'insert';
+    
+    my $rm = { name => 'rm', default => $next_mode };
+    my $id = { name => $self->{pk}, default => $pk_val };
 
-	$self->{template}->param(	HIDDEN_LOOP => [
-		{ELEMENT => $self->_build_hidden($rm)},
-		{ELEMENT => $self->_build_hidden($id)},
-	]);
+    $self->{template}->param(    HIDDEN_LOOP => [
+        {ELEMENT => $self->_build_hidden($rm)},
+        {ELEMENT => $self->_build_hidden($id)},
+    ]);
 
-	$self->{template}->param(
-		CUSTOM_CSS => "$self->{css}",
-		FORM_LOOP => \@form_loop, 
-		URL => $self->{query}->url,
-	) unless $self->{error};
-	
-	$self->{template}->output;
+    $self->{template}->param(
+        CUSTOM_CSS => "$self->{css}",
+        FORM_LOOP => \@form_loop, 
+        URL => $self->{query}->url,
+    ) unless $self->{error};
+    
+    $self->{template}->output;
 }
 
 
@@ -411,25 +421,25 @@ sub _display_form {
 
 sub _build_element {
 
-	my ($self, $element) = @_;
+    my ($self, $element) = @_;
 
-	# avoid unlikely (but possible) recursion
-	return if $element->{type} eq 'element';
+    # avoid unlikely (but possible) recursion
+    return if $element->{type} eq 'element';
 
-	# simple dispatch table
-	# for html builder methods
-	my %methods = (
-		checkbox	=> sub{ $self->_select_builder('checkbox_group', $element) },
-		radio		=> sub{ $self->_select_builder('radio_group', $element) },
-		select		=> sub{ $self->_select_builder('select', $element) },
-		text		=> sub{ $self->_build_text($element) },
-		textarea	=> sub{ $self->_build_textarea($element) },
-		hidden		=> sub{ $self->_build_hidden($element) },
-		date		=> sub{ $self->_build_date($element) },
-	);
+    # simple dispatch table
+    # for html builder methods
+    my %methods = (
+        checkbox    => sub{ $self->_select_builder('checkbox_group', $element) },
+        radio        => sub{ $self->_select_builder('radio_group', $element) },
+        select        => sub{ $self->_select_builder('select', $element) },
+        text        => sub{ $self->_build_text($element) },
+        textarea    => sub{ $self->_build_textarea($element) },
+        hidden        => sub{ $self->_build_hidden($element) },
+        date        => sub{ $self->_build_date($element) },
+    );
 
-	my $method = $methods{$element->{type}};	
-	$self->$method;
+    my $method = $methods{$element->{type}};    
+    $self->$method;
 }
 
 
@@ -439,14 +449,14 @@ sub _build_element {
 
 sub _build_text {
 
-	my ($self, $element) = @_;
+    my ($self, $element) = @_;
 
-	return $self->{form}->text(
-		name 		=> $element->{column},
-		default 	=> $element->{value},
-		$self->_pass_through($element)
-	);
-		
+    return $self->{form}->text(
+        name         => $element->{column},
+        default     => $element->{value},
+        $self->_pass_through($element)
+    );
+        
 }
 
 
@@ -455,14 +465,14 @@ sub _build_text {
 
 sub _build_textarea {
 
-	my ($self, $element) = @_;
+    my ($self, $element) = @_;
 
-	return $self->{form}->textarea(
-		name => $element->{column},
-		default => $element->{value},
-		$self->_pass_through($element)
-	);
-		
+    return $self->{form}->textarea(
+        name => $element->{column},
+        default => $element->{value},
+        $self->_pass_through($element)
+    );
+        
 }
 
 
@@ -471,9 +481,9 @@ sub _build_textarea {
 
 sub _build_hidden {
 
-	my ($self, $element) = @_;
+    my ($self, $element) = @_;
 
-	return $self->{form}->hidden($element);
+    return $self->{form}->hidden($element);
 
 }
 
@@ -484,32 +494,32 @@ sub _build_hidden {
 
 sub _build_date {
 
-	my ($self, $element) = @_;
+    my ($self, $element) = @_;
 
-	my ($YY,$MM,$DD) = ($element->{value} =~ /(\d{4})-(\d\d)-(\d\d)/);
+    my ($YY,$MM,$DD) = ($element->{value} =~ /(\d{4})-(\d\d)-(\d\d)/);
 
-	my $form ='Month ';
-	$form .= $self->{form}->text(
-		name	=> $element->{column} .'_MM',
-		default	=> $MM,
-		size	=> 2,
-		);
-		
-	$form .=' Day ';
-	$form .= $self->{form}->text(
-		name	=> $element->{column} .'_DD',
-		default	=> $DD,
-		size	=> 2,
-		);
-		
-	$form .=' Year ';
-	$form .= $self->{form}->text(
-		name	=> $element->{column} .'_YY',
-		default	=> $YY,
-		size	=> 4,
-		);
+    my $form ='Month ';
+    $form .= $self->{form}->text(
+        name    => $element->{column} .'_MM',
+        default    => $MM,
+        size    => 2,
+        );
+        
+    $form .=' Day ';
+    $form .= $self->{form}->text(
+        name    => $element->{column} .'_DD',
+        default    => $DD,
+        size    => 2,
+        );
+        
+    $form .=' Year ';
+    $form .= $self->{form}->text(
+        name    => $element->{column} .'_YY',
+        default    => $YY,
+        size    => 4,
+        );
 
-	return $form;
+    return $form;
 
 }
 
@@ -520,77 +530,77 @@ sub _build_date {
 
 sub _select_builder {
 
-	my ($self, $type, $element) = @_;
+    my ($self, $type, $element) = @_;
 
-	my (@values, %labels);
+    my (@values, %labels);
 
-	my $o_type;
+    my $o_type;
 
-	eval{
-		$o_type = ref $element->{options};
-		$o_type = 'SQL' unless $o_type;
-		$o_type = 'AOA' if $element->{options}->[0][1];
-	};
+    eval{
+        $o_type = ref $element->{options};
+        $o_type = 'SQL' unless $o_type;
+        $o_type = 'AOA' if $element->{options}->[0][1];
+    };
 
-	
-	# load values from an array
-	if ($o_type eq 'ARRAY'){
-		
-		my @labels;
-		for my $item (@{$element->{options}}){
-			push @values, $item;
-			push @labels, $item;
-		}
-		@labels{@values} = @labels;
+    
+    # load values from an array
+    if ($o_type eq 'ARRAY'){
+        
+        my @labels;
+        for my $item (@{$element->{options}}){
+            push @values, $item;
+            push @labels, $item;
+        }
+        @labels{@values} = @labels;
 
-	}
-
-
-	# load values from a hash
-	if ($o_type eq 'HASH'){
-		@values = keys %{$element->{options}};
-		%labels = %{$element->{options}};
-	}
+    }
 
 
-	# load values from a AoA
-	if ($o_type eq 'AOA'){
-		
-		my @labels;
-		for my $lr (@{$element->{options}}){
-			push @values, $lr->[0];
-			push @labels, $lr->[1];
-		}
-		@labels{@values} = @labels;
-	}
+    # load values from a hash
+    if ($o_type eq 'HASH'){
+        @values = keys %{$element->{options}};
+        %labels = %{$element->{options}};
+    }
 
-	# if param is not a reference
-	# assume that it is SQL and
-	# load values from a database
-	if ($o_type eq 'SQL'){
-		
-		my $db_return;
-		
-		eval {
-			$db_return = $self->{dbh}->selectall_arrayref($element->{options}); 1
-			} or $self->_err_msg($@);
-		
-		my @labels;
-		for my $lr (@{$db_return}){
-			push @values, $lr->[0];
-			push @labels, $lr->[1];
-		}
-		@labels{@values} = @labels;
-	}
 
-	return $self->{form}->$type(
-		name	=> $element->{column},
-		values  => \@values,
-		labels	=> \%labels,
-		default => $element->{value},
-		$self->_pass_through($element)
-	);
-	
+    # load values from a AoA
+    if ($o_type eq 'AOA'){
+        
+        my @labels;
+        for my $lr (@{$element->{options}}){
+            push @values, $lr->[0];
+            push @labels, $lr->[1];
+        }
+        @labels{@values} = @labels;
+    }
+
+    # if param is not a reference
+    # assume that it is SQL and
+    # load values from a database
+    if ($o_type eq 'SQL'){
+        
+        my $db_return;
+        
+        eval {
+            $db_return = $self->{dbh}->selectall_arrayref($element->{options}); 1
+            } or $self->_err_msg($@);
+        
+        my @labels;
+        for my $lr (@{$db_return}){
+            push @values, $lr->[0];
+            push @labels, $lr->[1];
+        }
+        @labels{@values} = @labels;
+    }
+
+    return $self->{form}->$type(
+        name    => $element->{column},
+        values  => \@values,
+        labels    => \%labels,
+        default => $element->{value},
+        $self->_pass_through($element)
+    );
+    
 }
 
 
@@ -599,16 +609,16 @@ sub _select_builder {
 # through to HTML::SuperForm
 
 sub _pass_through {
-	my $self = shift;
-	my $element = shift;
+    my $self = shift;
+    my $element = shift;
 
-	my %params;
-	for my $param (keys %$element){
-		next if grep(/$param/, @{$self->{params}});
-		$params{$param} = $element->{$param};
-	}
-	
-	return %params;
+    my %params;
+    for my $param (keys %$element){
+        next if grep(/$param/, @{$self->{params}});
+        $params{$param} = $element->{$param};
+    }
+    
+    return %params;
 }
 
 
@@ -617,55 +627,55 @@ sub _pass_through {
 
 sub _insert_row {
 
-	my $self = shift;
+    my $self = shift;
 
-	my $placeholder_count;
-	my @values; 
+    my $placeholder_count;
+    my @values; 
 
-	my $SQL = "INSERT into $self->{table} (";
+    my $SQL = "INSERT into $self->{table} (";
 
-	for my $element(@{$self->{elements}}){
+    for my $element(@{$self->{elements}}){
 
-		$SQL .= $element->{column} . ",";
+        $SQL .= $element->{column} . ",";
 
-		$placeholder_count++;
+        $placeholder_count++;
 
-		if ($element->{type} eq 'date'){
-			my $val = $self->{query}->param("$element->{column}_YY") .'-';
-			$val .= $self->{query}->param("$element->{column}_MM") .'-';
-			$val .= $self->{query}->param("$element->{column}_DD");
-			
-			push @values, $val;
-			
-		} else {
-			push @values, $self->{query}->param($element->{column});
-		}
-	}
+        if ($element->{type} eq 'date'){
+            my $val = $self->{query}->param("$element->{column}_YY") .'-';
+            $val .= $self->{query}->param("$element->{column}_MM") .'-';
+            $val .= $self->{query}->param("$element->{column}_DD");
+            
+            push @values, $val;
+            
+        } else {
+            push @values, $self->{query}->param($element->{column});
+        }
+    }
  
-	chop ($SQL);
+    chop ($SQL);
     
-	$SQL .= ") VALUES (";
+    $SQL .= ") VALUES (";
 
     for (1 .. $placeholder_count){
         $SQL .="?,";
     }   
-	chop ($SQL);
+    chop ($SQL);
         
-	$SQL .= ")";
-	
-	eval{ $self->{dbh}->do($SQL, undef, @values); 1}
-		or $self->_err_msg($@);
+    $SQL .= ")";
+    
+    eval{ $self->{dbh}->do($SQL, undef, @values); 1}
+        or $self->_err_msg($@);
         
-	my $id = $self->{dbh}->{mysql_insertid};
+    my $id = $self->{dbh}->{mysql_insertid};
 
-	$self->{primary_key} = $id;
+    $self->{primary_key} = $id;
 
-	$self->{template}->param(
-		MESSAGE => 'New Record Created.', 
-		URL=> $self->{query}->url,
-		) unless $self->{error};
+    $self->{template}->param(
+        MESSAGE => 'New Record Created.', 
+        URL=> $self->{query}->url,
+        ) unless $self->{error};
 
-	$self->{template}->output;
+    $self->{template}->output;
 }
 
 
@@ -673,46 +683,46 @@ sub _insert_row {
 # update an existing row
 
 sub _update_row {
-	
-	my $self = shift;
-	my $placeholder_count;
-	my @values = (); 
-
-	my $SQL = "UPDATE $self->{table} set ";
-	my $q = $self->{query};
-
-	for my $element(@{$self->{elements}}){
-
-		$SQL .= $element->{column} . "=?,";
-
-		$placeholder_count++;
-	
-		if ($element->{type} eq 'date'){
-			my $val = $q->param("$element->{column}_YY") .'-';
-			$val .= $q->param("$element->{column}_MM") .'-';
-			$val .= $q->param("$element->{column}_DD");
-			
-			push @values, $val;
-		} else {
-			push @values, $q->param($element->{column});
-		}
-	}
-	chop ($SQL);
     
-	$SQL .= " WHERE $self->{pk}=?";
-	
-	push @values, $q->param($self->{pk});
- 
-	my $sth = $self->{dbh}->prepare($SQL);
-        
-	eval { $sth->execute(@values); 1 } or $self->_err_msg($@, $SQL);
+    my $self = shift;
+    my $placeholder_count;
+    my @values = (); 
 
-	$self->{template}->param(
-		MESSAGE => 'Record Updated.', 
-		URL=> $self->{query}->url
-		) unless $self->{error};
-	
-	$self->{template}->output;
+    my $SQL = "UPDATE $self->{table} set ";
+    my $q = $self->{query};
+
+    for my $element(@{$self->{elements}}){
+
+        $SQL .= $element->{column} . "=?,";
+
+        $placeholder_count++;
+    
+        if ($element->{type} eq 'date'){
+            my $val = $q->param("$element->{column}_YY") .'-';
+            $val .= $q->param("$element->{column}_MM") .'-';
+            $val .= $q->param("$element->{column}_DD");
+            
+            push @values, $val;
+        } else {
+            push @values, $q->param($element->{column});
+        }
+    }
+    chop ($SQL);
+    
+    $SQL .= " WHERE $self->{pk}=?";
+    
+    push @values, $q->param($self->{pk});
+ 
+    my $sth = $self->{dbh}->prepare($SQL);
+        
+    eval { $sth->execute(@values); 1 } or $self->_err_msg($@, $SQL);
+
+    $self->{template}->param(
+        MESSAGE => 'Record Updated.', 
+        URL=> $self->{query}->url
+        ) unless $self->{error};
+    
+    $self->{template}->output;
 }
 
 
@@ -720,23 +730,23 @@ sub _update_row {
 # delete an existing row
 
 sub _delete_row {
-	
-	my $self = shift;
+    
+    my $self = shift;
 
-	my $SQL = "DELETE FROM $self->{table} WHERE $self->{pk}=?";
+    my $SQL = "DELETE FROM $self->{table} WHERE $self->{pk}=?";
 
-	my $sth = $self->{dbh}->prepare($SQL);
+    my $sth = $self->{dbh}->prepare($SQL);
         
-	eval { 
-		$sth->execute($self->{query}->param($self->{pk})); 
-		1 } or $self->_err_msg($@);
+    eval { 
+        $sth->execute($self->{query}->param($self->{pk})); 
+        1 } or $self->_err_msg($@);
 
-	$self->{template}->param(
-		MESSAGE => 'Record Deleted.', 
-		URL => $self->{query}->url
-	) unless $self->{error};
-	
-	$self->{template}->output;
+    $self->{template}->param(
+        MESSAGE => 'Record Deleted.', 
+        URL => $self->{query}->url
+    ) unless $self->{error};
+    
+    $self->{template}->output;
 }
 
 
@@ -745,33 +755,34 @@ sub _delete_row {
 
 sub _err_msg {
 
-	my $self = shift;
-	my @errs = @_;
-	
-	carp(@errs);
+    my $self = shift;
+    my @errs = @_;
+    
+    carp(@errs);
 
-	$self->{error}++;
-	$self->{err_msg} = 'Please try again.';
+    $self->{error}++;
+    $self->{err_msg} = 'Please try again.';
 
-	# call optional error handler
-	if ($self->{err_handler}){
-		$self->{err_msg} = $self->{err_handler}->(@errs);
-	} else {
-		$self->{err_msg} = join('<br />', @errs) if $self->{verbose};
-	}
-	
-	$self->{template}->param(
-		ERROR_MSG => $self->{err_msg}, 
-		URL 	  => $self->{query}->url
-	);
+    # call optional error handler
+    if ($self->{err_handler}){
+        $self->{err_msg} = $self->{err_handler}->(@errs);
+    } else {
+        $self->{err_msg} = join('<br />', @errs) if $self->{verbose};
+    }
+    
+    $self->{template}->param(
+        ERROR_MSG => $self->{err_msg}, 
+        URL       => $self->{query}->url
+    );
 }
 
 
 =head1 SEE ALSO
 
 HTML::SuperForm 
+HTML::DBForm::Search
 HTML::DBForm::Search::DropDown
-HTML::DBForm::Search::HTMLTable
+HTML::DBForm::Search::TableList
 
 
 =head1 AUTHOR
@@ -793,189 +804,189 @@ sub TEMPLATE {
 qq(<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" >
 <html>
   <head>
-	<!-- TMPL_IF CUSTOM_CSS -->
-		<link rel="stylesheet" href="<!-- TMPL_VAR CUSTOM_CSS -->" type="text/css">
-	<!-- TMPL_ELSE -->
- 	<style>
-		
-		body {
-			margin: 15 15 15 15;
-		}
+    <!-- TMPL_IF CUSTOM_CSS -->
+        <link rel="stylesheet" href="<!-- TMPL_VAR CUSTOM_CSS -->" type="text/css">
+    <!-- TMPL_ELSE -->
+     <style>
+        
+        body {
+            margin: 15 15 15 15;
+        }
 
-		.admin_area {
-			padding-top: 25px;
-			padding-bottom: 25px;
-			padding-left: 20px;
-			margin-bottom: 30;
-			float: left;
-			width: 540px;
-			border: solid 1px #ccc;
-			background-color: #fff;
-		}
-		
-		.message_area {
-			margin-top: 45px;
-			margin-bottom: auto;
-			margin-left: auto;
-			margin-right: auto;
-			font-family: Verdana, sans-serif, Arial;
-			font-weight: normal;
-			font-size: 12px;
-			width: 340px;
-			padding-left: 10px;
-			padding-right: 10px;
-			padding-top: 10px;
-			padding-bottom: 10px;
-			border-top: solid 2px #dedede;
-			border-left: solid 2px #dedede;
-			border-right: solid 2px #666;
-			border-bottom: solid 2px #666;
-			background-color: #ccc;
-		}
-			
-		.error_area {
-			margin-top: 45px;
-			margin-bottom: auto;
-			margin-left: auto;
-			margin-right: auto;
-			font-family: Verdana, sans-serif, Arial;
-			font-weight: normal;
-			font-size: 12px;
-			width: 340px;
-			color: #600;
-			padding-left: 10px;
-			padding-right: 10px;
-			padding-top: 10px;
-			padding-bottom: 10px;
-			border-top: solid 2px #dedede;
-			border-left: solid 2px #dedede;
-			border-right: solid 2px #666;
-			border-bottom: solid 2px #666;
-			background-color: #ccc;
-		}
-		
-		.error_message {
-			padding-top: 10px;
-			padding-bottom: 10px;
-		}	
-	
-		table { 
-			font-family: Verdana, sans-serif, Arial;
-			font-weight: normal;
-			font-size: 12px;
-			font-color: #ccc;
-			background-color: white;
-		}
+        .admin_area {
+            padding-top: 25px;
+            padding-bottom: 25px;
+            padding-left: 20px;
+            margin-bottom: 30;
+            float: left;
+            width: 540px;
+            border: solid 1px #ccc;
+            background-color: #fff;
+        }
+        
+        .message_area {
+            margin-top: 45px;
+            margin-bottom: auto;
+            margin-left: auto;
+            margin-right: auto;
+            font-family: Verdana, sans-serif, Arial;
+            font-weight: normal;
+            font-size: 12px;
+            width: 340px;
+            padding-left: 10px;
+            padding-right: 10px;
+            padding-top: 10px;
+            padding-bottom: 10px;
+            border-top: solid 2px #dedede;
+            border-left: solid 2px #dedede;
+            border-right: solid 2px #666;
+            border-bottom: solid 2px #666;
+            background-color: #ccc;
+        }
+            
+        .error_area {
+            margin-top: 45px;
+            margin-bottom: auto;
+            margin-left: auto;
+            margin-right: auto;
+            font-family: Verdana, sans-serif, Arial;
+            font-weight: normal;
+            font-size: 12px;
+            width: 340px;
+            color: #600;
+            padding-left: 10px;
+            padding-right: 10px;
+            padding-top: 10px;
+            padding-bottom: 10px;
+            border-top: solid 2px #dedede;
+            border-left: solid 2px #dedede;
+            border-right: solid 2px #666;
+            border-bottom: solid 2px #666;
+            background-color: #ccc;
+        }
+        
+        .error_message {
+            padding-top: 10px;
+            padding-bottom: 10px;
+        }    
+    
+        table { 
+            font-family: Verdana, sans-serif, Arial;
+            font-weight: normal;
+            font-size: 12px;
+            font-color: #ccc;
+            background-color: white;
+        }
 
-		td {
-			padding-top: 4px;
-			padding-bottom: 4px;
-		}
-					
-		INPUT, TEXTAREA, SELECT, OPTION, SUBMIT {
+        td {
+            padding-top: 4px;
+            padding-bottom: 4px;
+        }
+                    
+        INPUT, TEXTAREA, SELECT, OPTION, SUBMIT {
           font-family: Arial, Helvetica, Sans-Serif;
-		  font-size: 11px;
+          font-size: 11px;
           padding:2px;
           color: #333;
           /*background-color: #fff;*/
           border: solid 1px #666;
           } 
-	</style>
- 	<!-- /TMPL_IF --> 
+    </style>
+     <!-- /TMPL_IF --> 
 
     <title><TMPL_VAR NAME=VALUE></title>
-	<script> 
-		function delete_record(){
-		var confirmed = window.confirm("Are you sure? Deletions are permanent.");
-		if(confirmed){
-			document.location="<!-- TMPL_VAR URL -->?rm=delete&<!-- TMPL_VAR PK -->=<!-- TMPL_VAR ID -->";
-		}else{
-			return;
-		}
-	}
-	</script>
- 	
+    <script> 
+        function delete_record(){
+        var confirmed = window.confirm("Are you sure? Deletions are permanent.");
+        if(confirmed){
+            document.location="<!-- TMPL_VAR URL -->?rm=delete&<!-- TMPL_VAR PK -->=<!-- TMPL_VAR ID -->";
+        }else{
+            return;
+        }
+    }
+    </script>
+     
   </head>
 
 <body>
 
 
-	<form name="form1" enctype="multipart/form-data" method="post">
+    <form name="form1" enctype="multipart/form-data" method="post">
 
-	<!--             -->
+    <!--             -->
 
-	<!-- TMPL_LOOP HIDDEN_LOOP -->
-	<!-- TMPL_VAR ELEMENT -->
-	<!-- /TMPL_LOOP -->
+    <!-- TMPL_LOOP HIDDEN_LOOP -->
+    <!-- TMPL_VAR ELEMENT -->
+    <!-- /TMPL_LOOP -->
 
-	<!-- TMPL_IF FORM_LOOP -->
+    <!-- TMPL_IF FORM_LOOP -->
     
-	<div class="admin_area">	
-    	<table>
+    <div class="admin_area">    
+        <table>
 
-		<!-- TMPL_LOOP NAME=FORM_LOOP -->
-		<tr>
-			<td>
-				<!-- TMPL_VAR LABEL -->
-			</td>
-			<td>
-				<!-- TMPL_VAR ELEMENT -->
-			</td>
-		</tr>
-		<!-- /TMPL_LOOP -->
+        <!-- TMPL_LOOP NAME=FORM_LOOP -->
+        <tr>
+            <td>
+                <!-- TMPL_VAR LABEL -->
+            </td>
+            <td>
+                <!-- TMPL_VAR ELEMENT -->
+            </td>
+        </tr>
+        <!-- /TMPL_LOOP -->
 
-		<tr>
-			<td colspan=2>
-			<input type='submit' name='submit' value='Submit' style="width:80;">
-			<input type='button' name='cancel' value='Cancel' style="width:80;"
-			 onclick='document.location="javascript:history.go(-1)"'>
-	
-			<!-- TMPL_IF DELETE -->
+        <tr>
+            <td colspan=2>
+            <input type='submit' name='submit' value='Submit' style="width:80;">
+            <input type='button' name='cancel' value='Cancel' style="width:80;"
+             onclick='document.location="javascript:history.go(-1)"'>
+    
+            <!-- TMPL_IF DELETE -->
 
-			<input type='button' name='delete' value='Delete' style="width:80;"
-			onclick="javascript:delete_record();">
-		
-			<!-- /TMPL_IF -->
-			</td>
-		</tr>
+            <input type='button' name='delete' value='Delete' style="width:80;"
+            onclick="javascript:delete_record();">
+        
+            <!-- /TMPL_IF -->
+            </td>
+        </tr>
 
-		</table>
-	</div>
-	<!-- /TMPL_IF -->
-	</form>
-
-
-	
-	<!--             -->
-	<!-- ERROR AREA  -->
-	<!--             -->
-
-	<!-- TMPL_IF ERROR_MSG -->
-	<div class='error_area'>
-	I'm sorry, but there was an error processing your request.<br />
-	<div class='error_message'>
-	<!-- TMPL_VAR ERROR_MSG -->
-	</div>
-	Contact the administrator for more information.
-	</div>		
-	<!-- /TMPL_IF -->
+        </table>
+    </div>
+    <!-- /TMPL_IF -->
+    </form>
 
 
-	<!--             -->
-	<!--  MSG AREA   -->
-	<!--             -->
+    
+    <!--             -->
+    <!-- ERROR AREA  -->
+    <!--             -->
 
-	<!--  TMPL_IF MESSAGE   -->
-	<div class='message_area'>
-	<div class='message'>
-	<!-- TMPL_VAR MESSAGE -->
-	</div>
-	
-	Your request was processed successfully.<p>
-	<a href='<!-- TMPL_VAR URL -->' class='glink'>Click Here</a>
-	to continue.
-	</div>		
-	<!-- /TMPL_IF -->
+    <!-- TMPL_IF ERROR_MSG -->
+    <div class='error_area'>
+    I'm sorry, but there was an error processing your request.<br />
+    <div class='error_message'>
+    <!-- TMPL_VAR ERROR_MSG -->
+    </div>
+    Contact the administrator for more information.
+    </div>        
+    <!-- /TMPL_IF -->
+
+
+    <!--             -->
+    <!--  MSG AREA   -->
+    <!--             -->
+
+    <!--  TMPL_IF MESSAGE   -->
+    <div class='message_area'>
+    <div class='message'>
+    <!-- TMPL_VAR MESSAGE -->
+    </div>
+    
+    Your request was processed successfully.<p>
+    <a href='<!-- TMPL_VAR URL -->' class='glink'>Click Here</a>
+    to continue.
+    </div>        
+    <!-- /TMPL_IF -->
 
 
 </body>
