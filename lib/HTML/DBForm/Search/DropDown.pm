@@ -5,7 +5,7 @@ use strict;
 use warnings;
 no warnings 'uninitialized';
 
-our $VERSION = '1.02';
+our $VERSION = '1.03';
 
 =head1 NAME
 
@@ -103,11 +103,17 @@ sub run {
 
 	my ($self, $editor) = @_;
 
+	my $tmpl_ref = $self->{'tmpl_file'} 
+		? do { open(FH, "< $self->{'tmpl_file'}"); local $/; <FH> } 
+		: &TEMPLATE;
+
+
 	$self->{template} = HTML::Template->new(
-		scalarref => \TEMPLATE(), 
+		scalarref => \$tmpl_ref, 
 		die_on_bad_params => 0,
 		loop_context_vars => 1,
 	);
+
 
 	$self->{editor} = $editor;
 	
@@ -123,6 +129,7 @@ sub run {
 		$self->{template}->output ;
 	
 }
+
 
 
 =head2 set_stylesheet
@@ -143,6 +150,28 @@ sub set_stylesheet {
 	my $self = shift;
 	$self->{css} = shift ; 
 }
+
+
+
+=head2 set_template
+
+Sets an optional template file
+
+Takes a scalar holding the path to an HTML::Template template.
+
+
+B<Example>
+
+  $search->set_template('/www/templates/my.tmpl');
+
+=cut
+
+sub set_template {
+
+	my $self = shift;
+	$self->{tmpl_file} = shift ; 
+}
+
 
 
 
