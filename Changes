@@ -1,0 +1,6 @@
+Revision history for Perl extension HTML::DBWebForm.
+
+0.01  Wed Sep  1 11:14:16 2004
+	- original version; created by h2xs 1.22 with options
+		-AX -n HTML::DBWebForm
+
